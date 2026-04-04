@@ -4,6 +4,7 @@ import { Process } from "../models/process";
 
 export class Disk {
   queue: Process[] = [];
+  current: Process | null = null;
 
   add(process: Process) {
     process.state = "waiting";
@@ -11,19 +12,28 @@ export class Disk {
     this.queue.push(process);
   }
 
-  tick(): Process[] {
+  tick() {
     const finished: Process[] = [];
 
-    this.queue.forEach((p) => {
-      p.remainingIo--;
+    // se não tem processo no disco, pega o próximo
+    if (!this.current && this.queue.length > 0) {
+      this.current = this.queue.shift()!;
+    }
 
-      if (p.remainingIo <= 0) {
-        finished.push(p);
+    // executa I/O
+    if (this.current) {
+      this.current.remainingIo--;
+
+      if (this.current.remainingIo <= 0) {
+        this.current.state = "ready";
+        finished.push(this.current);
+        this.current = null;
       }
-    });
+    }
 
-    this.queue = this.queue.filter((p) => p.remainingIo > 0);
-
-    return finished;
+    return {
+      finished,
+      running: this.current, // 🔥 ESSENCIAL
+    };
   }
 }

@@ -7,6 +7,7 @@ import { Process } from "@/core/models/process";
 type TimelineItem = {
   time: number;
   processId: number | null;
+  type: "cpu" | "io";
 };
 
 type SimulatorState = {

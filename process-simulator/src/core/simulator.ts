@@ -17,7 +17,7 @@ export class Simulator {
   totalTime: number;
 
   processes: Process[] = [];
-  timeline: { time: number; processId: number | null }[] = [];
+  timeline: { time: number; processId: number | null, type: "cpu" | "io" }[] = [];
 
   constructor(quantum: number, totalTime: number) {
     this.quantum = quantum;
@@ -33,8 +33,20 @@ export class Simulator {
     if (this.time >= this.totalTime) return;
 
     // 🔹 DISCO (E/S)
-    const finishedIO = this.disk.tick();
-    finishedIO.forEach((p) => this.scheduler.add(p));
+    const { finished, running } = this.disk.tick();
+
+    // processos que terminaram I/O voltam pra fila
+    finished.forEach((p) => this.scheduler.add(p));
+
+// voltou do disco
+finished.forEach((p) => this.scheduler.add(p));
+
+// 🔥 REGISTRA DISCO
+this.timeline.push({
+  time: this.time,
+  processId: running ? running.id : null,
+  type: "io",
+});
 
     // 🔹 CPU livre
     if (!this.currentProcess) {
@@ -54,7 +66,7 @@ export class Simulator {
       p.remainingCpu--;
       this.quantumCounter++;
 
-      this.timeline.push({ time: this.time, processId: p.id });
+      this.timeline.push({ time: this.time, processId: p.id, type: "cpu" });
 
       // terminou CPU do ciclo
       if (p.remainingCpu <= 0) {
@@ -77,7 +89,7 @@ export class Simulator {
         this.currentProcess = null;
       }
     } else {
-      this.timeline.push({ time: this.time, processId: null });
+      this.timeline.push({ time: this.time, processId: null, type: "cpu" });
     }
 
     // 🔹 tempo de espera

@@ -3,6 +3,9 @@
 import { useSimulator } from "@/hooks/useSimulator";
 import { Process } from "@/core/models/process";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 
 export default function Page() {
   const initialProcesses: Process[] = [];
@@ -39,70 +42,86 @@ export default function Page() {
   return process ? process.name : id;
 };
 
-  const getColor = (id: number | null) => {
-    if (id === null) return "bg-gray-600";
+  const getColor = (id: number | null, type: "cpu" | "io") => {
+  if (id === null) return "bg-gray-600";
 
-    const colors = [
-      "bg-red-500",
-      "bg-blue-500",
-      "bg-green-500",
-      "bg-yellow-500",
-      "bg-purple-500",
-    ];
+  if (type === "io") return "bg-orange-500"; // disco
 
-    return colors[id % colors.length];
-  };
+  const colors = [
+    "bg-red-500",
+    "bg-blue-500",
+    "bg-green-500",
+    "bg-yellow-500",
+    "bg-purple-500",
+  ];
+
+  return colors[id % colors.length];
+};
 
   // 🔥 GANTT AGRUPADO (blocos contínuos)
   const groupedTimeline = [] as {
     processId: number | null;
     duration: number;
+    type: "cpu" | "io";
   }[];
 
   timeline.forEach((t) => {
-    const last = groupedTimeline[groupedTimeline.length - 1];
+  const last = groupedTimeline[groupedTimeline.length - 1];
 
-    if (!last || last.processId !== t.processId) {
-      groupedTimeline.push({ processId: t.processId, duration: 1 });
-    } else {
-      last.duration++;
-    }
-  });
+  if (
+    !last ||
+    last.processId !== t.processId ||
+    last.type !== t.type
+  ) {
+    groupedTimeline.push({
+      processId: t.processId,
+      duration: 1,
+      type: t.type, // 👈 ESSENCIAL
+    });
+  } else {
+    last.duration++;
+  }
+});
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-6 grid grid-cols-3 gap-4">
+    <div className="min-h-screen bg-gray-900 text-white p-6 flex flex-col gap-4">
       {/* CONTROLES */}
       <div className="col-span-3 flex gap-4">
-        <button
+        <Button
           onClick={() => setIsRunning(true)}
           className="bg-green-600 px-4 py-2 rounded"
         >
-          ▶ Play
-        </button>
+          Play
+        </Button>
 
-        <button
+        <Button
           onClick={() => setIsRunning(false)}
           className="bg-red-600 px-4 py-2 rounded"
         >
-          ⏸ Pause
-        </button>
+          Pause
+        </Button>
 
-        <button
+        <Button
           onClick={reset}
-          className="bg-yellow-600 px-4 py-2 rounded"
+          className="bg-blue-600 px-4 py-2 rounded"
         >
-          🔄 Reset
-        </button>
-
-        <select
-          value={speed}
-          onChange={(e) => setSpeed(Number(e.target.value))}
-          className="bg-gray-700 px-2 rounded"
-        >
-          <option value={1000}>1x</option>
-          <option value={500}>2x</option>
-          <option value={200}>5x</option>
-        </select>
+          Reset
+        </Button>
+        <Select 
+          onValueChange={(value) => setSpeed(Number(value))}
+          value={String(speed)}>
+          <SelectTrigger className="w-full max-w-48">
+            <SelectValue placeholder="Valocidade" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup className="bg-gray-700">
+              <SelectLabel>Velocidade</SelectLabel>
+              <SelectItem value="1000">1x</SelectItem>
+              <SelectItem value="500">2x</SelectItem>
+              <SelectItem value="200">5x</SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* MÉTRICAS */}
@@ -133,14 +152,14 @@ export default function Page() {
         <h2 className="text-xl mb-4">Adicionar Processo</h2>
 
         <div className="flex gap-2">
-          <input
+          <Input
             type="text"
             placeholder="Nome"
             className="text-white px-2 placeholder:text-white border-2 border-gray-700 rounded"
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             value={form.name}
           />
-          <input
+          <Input
             type="number"
             placeholder="CPU"
             className="text-white px-2 placeholder:text-white border-2 border-gray-700 rounded"
@@ -149,7 +168,7 @@ export default function Page() {
             }
             value={form.cpuTime || ""}
           />
-          <input
+          <Input
             type="number"
             placeholder="Disco"
             className="text-white px-2 placeholder:text-white border-2 border-gray-700 rounded"
@@ -158,7 +177,7 @@ export default function Page() {
             }
             value={form.ioTime || ""}
           />
-          <input
+          <Input
             type="number"
             placeholder="Ciclos"
             className="text-white px-2 placeholder:text-white border-2 border-gray-700 rounded"
@@ -168,7 +187,7 @@ export default function Page() {
             value={form.cycles || ""}
           />
 
-          <button
+          <Button
             onClick={() => {
               if (!form.name || form.cpuTime <= 0) return;
 
@@ -192,10 +211,10 @@ export default function Page() {
                 ioTime: 0,
                 cycles: 1 });
             }}
-            className="bg-indigo-600 px-3 rounded"
+            className="bg-secondary text-black px-3 rounded"
           >
             Add
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -205,25 +224,31 @@ export default function Page() {
         <table className="w-full text-left">
           <thead>
             <tr className="text-gray-400">
-              <th>ID</th>
               <th>Nome</th>
               <th>Estado</th>
-              <th>CPU</th>
+              <th>Esp CPU</th>
+              <th>Esp Disco</th>
               <th>Espera</th>
               <th>Resposta</th>
               <th>Final</th>
+              <th>CPU</th>
+              <th>Disco</th>
+              <th>Ciclos</th>
             </tr>
           </thead>
           <tbody>
             {processes.map((p) => (
               <tr key={p.id} className="border-t border-gray-700">
-                <td>{p.id}</td>
                 <td>{p.name}</td>
                 <td>{p.state}</td>
                 <td>{p.remainingCpu}</td>
+                <td>{p.remainingIo}</td>
                 <td>{p.waitingTime}</td>
                 <td>{p.responseTime ?? "-"}</td>
                 <td>{p.finishTime ?? "-"}</td>
+                <td>{p.cpuTime}</td>
+                <td>{p.ioTime}</td>
+                <td>{p.cycles}</td>              
               </tr>
             ))}
           </tbody>
@@ -247,33 +272,62 @@ export default function Page() {
   </div>
 </div>
 
-      {/* GANTT MELHORADO */}
-      <div className="col-span-3 bg-gray-800 p-4 rounded-2xl">
-  <h2 className="text-xl mb-4">Gráfico de Gantt</h2>
+{/* CPU */}
+<div className="col-span-3 bg-gray-800 p-4 rounded-2xl">
+  <h2 className="text-xl mb-4">CPU (Execução)</h2>
 
-  <div className="flex overflow-x-auto items-end">
-    {groupedTimeline.map((block, i) => (
-      <div key={i} className="flex flex-col items-center">
-        
-        {/* bloco */}
-        <div
-          className={`${getColor(block.processId)} flex items-center justify-center text-xs border-r border-gray-900`}
-          style={{
-            width: `${block.duration * 30}px`,
-            height: "40px",
-          }}
-        >
-          {getProcessName(block.processId)}
+  <div className="flex overflow-x-auto items-end flex-wrap">
+    {groupedTimeline
+      .filter((block) => block.type === "cpu")
+      .map((block, i) => (
+        <div key={i} className="flex flex-col items-center">
+
+          <div
+            className={`${getColor(block.processId, "cpu")} flex items-center justify-center text-xs border-r border-gray-900`}
+            style={{
+              width: `${block.duration * 30}px`,
+              height: "40px",
+            }}
+          >
+            {getProcessName(block.processId)}
+          </div>
+
+          <span className="text-[10px] mt-1">
+            {block.duration}
+          </span>
         </div>
-
-        {/* tempo */}
-        <span className="text-[10px] mt-1">
-          {block.duration}
-        </span>
-      </div>
-    ))}
+      ))}
   </div>
 </div>
+
+{/* DISCO */}
+<div className="col-span-3 bg-gray-800 p-4 rounded-2xl">
+  <h2 className="text-xl mb-4">Disco (E/S)</h2>
+
+  <div className="flex overflow-x-auto items-end flex-wrap">
+    {groupedTimeline
+      .filter((block) => block.type === "io")
+      .map((block, i) => (
+        <div key={i} className="flex flex-col items-center">
+
+          <div
+            className={`${getColor(block.processId, "io")} flex items-center justify-center text-xs border-r border-gray-900`}
+            style={{
+              width: `${block.duration * 30}px`,
+              height: "40px",
+            }}
+          >
+            {getProcessName(block.processId)}
+          </div>
+
+          <span className="text-[10px] mt-1">
+            {block.duration}
+          </span>
+        </div>
+      ))}
+  </div>
+</div>
+
     </div>
   );
 }
