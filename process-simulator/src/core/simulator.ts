@@ -17,7 +17,8 @@ export class Simulator {
   totalTime: number;
 
   processes: Process[] = [];
-  timeline: { time: number; processId: number | null, type: "cpu" | "io" }[] = [];
+  timeline: { time: number; processId: number | null; type: "cpu" | "io" }[] =
+    [];
 
   constructor(quantum: number, totalTime: number) {
     this.quantum = quantum;
@@ -38,22 +39,25 @@ export class Simulator {
     // processos que terminaram I/O voltam pra fila
     finished.forEach((p) => this.scheduler.add(p));
 
-// voltou do disco
-finished.forEach((p) => this.scheduler.add(p));
+    // voltou do disco
+    finished.forEach((p) => this.scheduler.add(p));
 
-// 🔥 REGISTRA DISCO
-this.timeline.push({
-  time: this.time,
-  processId: running ? running.id : null,
-  type: "io",
-});
+    // 🔥 REGISTRA DISCO
+    this.timeline.push({
+      time: this.time,
+      processId: running ? running.id : null,
+      type: "io",
+    });
 
     // 🔹 CPU livre
     if (!this.currentProcess) {
       this.currentProcess = this.scheduler.next();
       this.quantumCounter = 0;
 
-      if (this.currentProcess && this.currentProcess.responseTime === undefined) {
+      if (
+        this.currentProcess &&
+        this.currentProcess.responseTime === undefined
+      ) {
         this.currentProcess.responseTime = this.time;
       }
     }
@@ -72,12 +76,19 @@ this.timeline.push({
       if (p.remainingCpu <= 0) {
         p.currentCycle++;
 
-        if (p.currentCycle >= p.cycles) {
-          p.state = "terminated";
-          p.finishTime = this.time;
-        } else {
+        if (p.ioTime > 0) {
           this.disk.add(p);
-          p.remainingCpu = p.cpuTime;
+          p.remainingIo = p.ioTime;
+        } else {
+          p.currentCycle++;
+
+          if (p.currentCycle >= p.cycles) {
+            p.state = "terminated";
+            p.finishTime = this.time;
+          } else {
+            p.remainingCpu = p.cpuTime;
+            this.scheduler.add(p);
+          }
         }
 
         this.currentProcess = null;

@@ -4,7 +4,15 @@ import { useSimulator } from "@/hooks/useSimulator";
 import { Process } from "@/core/models/process";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 
 export default function Page() {
@@ -21,9 +29,9 @@ export default function Page() {
     speed,
     setSpeed,
     addProcess,
-    reset // 🔥 precisa expor isso no hook
+    reset, // 🔥 precisa expor isso no hook
   } = useSimulator({
-    quantum: 2,
+    quantum: 4,
     totalTime: 100,
     processes: initialProcesses,
   });
@@ -36,27 +44,27 @@ export default function Page() {
   });
 
   const getProcessName = (id: number | null) => {
-  if (id === null) return "-";
+    if (id === null) return "-";
 
-  const process = processes.find((p) => p.id === id);
-  return process ? process.name : id;
-};
+    const process = processes.find((p) => p.id === id);
+    return process ? process.name : id;
+  };
 
   const getColor = (id: number | null, type: "cpu" | "io") => {
-  if (id === null) return "bg-gray-600";
+    if (id === null) return "bg-gray-600";
 
-  if (type === "io") return "bg-orange-500"; // disco
+    if (type === "io") return "bg-orange-500"; // disco
 
-  const colors = [
-    "bg-red-500",
-    "bg-blue-500",
-    "bg-green-500",
-    "bg-yellow-500",
-    "bg-purple-500",
-  ];
+    const colors = [
+      "bg-red-500",
+      "bg-blue-500",
+      "bg-green-500",
+      "bg-yellow-500",
+      "bg-purple-500",
+    ];
 
-  return colors[id % colors.length];
-};
+    return colors[id % colors.length];
+  };
 
   // 🔥 GANTT AGRUPADO (blocos contínuos)
   const groupedTimeline = [] as {
@@ -66,22 +74,18 @@ export default function Page() {
   }[];
 
   timeline.forEach((t) => {
-  const last = groupedTimeline[groupedTimeline.length - 1];
+    const last = groupedTimeline[groupedTimeline.length - 1];
 
-  if (
-    !last ||
-    last.processId !== t.processId ||
-    last.type !== t.type
-  ) {
-    groupedTimeline.push({
-      processId: t.processId,
-      duration: 1,
-      type: t.type, // 👈 ESSENCIAL
-    });
-  } else {
-    last.duration++;
-  }
-});
+    if (!last || last.processId !== t.processId || last.type !== t.type) {
+      groupedTimeline.push({
+        processId: t.processId,
+        duration: 1,
+        type: t.type, // 👈 ESSENCIAL
+      });
+    } else {
+      last.duration++;
+    }
+  });
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-6 flex flex-col gap-4">
@@ -101,15 +105,13 @@ export default function Page() {
           Pause
         </Button>
 
-        <Button
-          onClick={reset}
-          className="bg-blue-600 px-4 py-2 rounded"
-        >
+        <Button onClick={reset} className="bg-blue-600 px-4 py-2 rounded">
           Reset
         </Button>
-        <Select 
+        <Select
           onValueChange={(value) => setSpeed(Number(value))}
-          value={String(speed)}>
+          value={String(speed)}
+        >
           <SelectTrigger className="w-full max-w-48">
             <SelectValue placeholder="Valocidade" />
           </SelectTrigger>
@@ -209,7 +211,8 @@ export default function Page() {
                 name: "",
                 cpuTime: 0,
                 ioTime: 0,
-                cycles: 1 });
+                cycles: 1,
+              });
             }}
             className="bg-secondary text-black px-3 rounded"
           >
@@ -248,7 +251,7 @@ export default function Page() {
                 <td>{p.finishTime ?? "-"}</td>
                 <td>{p.cpuTime}</td>
                 <td>{p.ioTime}</td>
-                <td>{p.cycles}</td>              
+                <td>{p.cycles}</td>
               </tr>
             ))}
           </tbody>
@@ -256,78 +259,73 @@ export default function Page() {
       </div>
 
       <div className="bg-gray-800 p-4 rounded-2xl col-span-3">
-  <h2 className="text-xl mb-2">Fila de Prontos (Ready)</h2>
+        <h2 className="text-xl mb-2">Fila de Prontos (Ready)</h2>
 
-  <div className="flex gap-2">
-    {processes
-      .filter((p) => p.state === "ready")
-      .map((p) => (
-        <div
-          key={p.id}
-          className="bg-blue-600 px-3 py-1 rounded text-sm"
-        >
-          {p.name} (CPU: {p.remainingCpu})
+        <div className="flex gap-2">
+          {processes
+            .filter((p) => p.state === "ready")
+            .map((p) => (
+              <div key={p.id} className="bg-blue-600 px-3 py-1 rounded text-sm">
+                {p.name} (CPU: {p.remainingCpu})
+              </div>
+            ))}
         </div>
-      ))}
-  </div>
-</div>
+      </div>
 
-{/* CPU */}
-<div className="col-span-3 bg-gray-800 p-4 rounded-2xl">
-  <h2 className="text-xl mb-4">CPU (Execução)</h2>
+      {/* CPU */}
+      <div className="col-span-3 bg-gray-800 p-4 rounded-2xl">
+        <h2 className="text-xl mb-4">CPU (Execução)</h2>
 
-  <div className="flex overflow-x-auto items-end flex-wrap">
-    {groupedTimeline
-      .filter((block) => block.type === "cpu")
-      .map((block, i) => (
-        <div key={i} className="flex flex-col items-center">
+        <div className="flex overflow-x-auto items-end flex-wrap">
+          {groupedTimeline
+            .filter((block) => block.type === "cpu")
+            .map((block, i) => (
+              <div key={i} className="flex flex-col items-center">
+                <div
+                  className={`${getColor(
+                    block.processId,
+                    "cpu"
+                  )} flex items-center justify-center text-xs border-r border-gray-900`}
+                  style={{
+                    width: `${block.duration * 30}px`,
+                    height: "40px",
+                  }}
+                >
+                  {getProcessName(block.processId)}
+                </div>
 
-          <div
-            className={`${getColor(block.processId, "cpu")} flex items-center justify-center text-xs border-r border-gray-900`}
-            style={{
-              width: `${block.duration * 30}px`,
-              height: "40px",
-            }}
-          >
-            {getProcessName(block.processId)}
-          </div>
-
-          <span className="text-[10px] mt-1">
-            {block.duration}
-          </span>
+                <span className="text-[10px] mt-1">{block.duration}</span>
+              </div>
+            ))}
         </div>
-      ))}
-  </div>
-</div>
+      </div>
 
-{/* DISCO */}
-<div className="col-span-3 bg-gray-800 p-4 rounded-2xl">
-  <h2 className="text-xl mb-4">Disco (E/S)</h2>
+      {/* DISCO */}
+      <div className="col-span-3 bg-gray-800 p-4 rounded-2xl">
+        <h2 className="text-xl mb-4">Disco (E/S)</h2>
+        <div className="flex overflow-x-auto items-end flex-wrap">
+          {groupedTimeline
+            .filter((block) => block.type === "io")
+            .map((block, i) => (
+              <div key={i} className="flex flex-col items-center">
+                <div
+                  className={`${getColor(
+                    block.processId,
+                    "io"
+                  )} flex items-center justify-center text-xs border-r border-gray-900`}
+                  style={{
+                    width: `${block.duration * 30}px`,
+                    height: "40px",
+                  }}
+                >
+                  {getProcessName(block.processId)}
+                </div>
 
-  <div className="flex overflow-x-auto items-end flex-wrap">
-    {groupedTimeline
-      .filter((block) => block.type === "io")
-      .map((block, i) => (
-        <div key={i} className="flex flex-col items-center">
-
-          <div
-            className={`${getColor(block.processId, "io")} flex items-center justify-center text-xs border-r border-gray-900`}
-            style={{
-              width: `${block.duration * 30}px`,
-              height: "40px",
-            }}
-          >
-            {getProcessName(block.processId)}
-          </div>
-
-          <span className="text-[10px] mt-1">
-            {block.duration}
-          </span>
+                <span className="text-[10px] mt-1">{block.duration}</span>
+              </div>
+            ))}
         </div>
-      ))}
-  </div>
-</div>
-
+      </div>
     </div>
   );
 }
