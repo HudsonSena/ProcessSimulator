@@ -1,23 +1,24 @@
-// /core/models/process.ts
-
 export type ProcessState =
   | "ready"
   | "running"
   | "waiting"
   | "terminated";
 
+export type Burst = {
+  cpu: number;
+  io: number;
+};
+
 export interface Process {
   id: number;
   name: string;
 
-  cpuTime: number;        // tempo total de CPU
+  bursts: Burst[]; // 🔥 lista de ciclos (CPU + IO)
+
+  currentBurst: number; // 🔥 índice do ciclo atual
+
   remainingCpu: number;
-
-  ioTime: number;         // tempo de disco
   remainingIo: number;
-
-  cycles: number;         // quantas vezes precisa rodar
-  currentCycle: number;
 
   state: ProcessState;
 

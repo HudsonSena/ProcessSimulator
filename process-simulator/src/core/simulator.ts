@@ -14,6 +14,8 @@ export class Simulator {
   quantum: number;
   quantumCounter = 0;
 
+  currentGlobalCycle = 0;
+
   totalTime: number;
 
   processes: Process[] = [];
@@ -25,94 +27,169 @@ export class Simulator {
     this.totalTime = totalTime;
   }
 
+  // 🔥 só avança ciclo quando TODOS terminaram o atual
+  canAdvanceCycle() {
+    return this.processes.every(
+      (p) =>
+        p.currentBurst > this.currentGlobalCycle ||
+        p.state === "terminated"
+    );
+  }
+
   addProcess(process: Process) {
+    const existing = this.processes.find((p) => p.name === process.name);
+
+    if (existing) {
+      existing.bursts.push({
+        cpu: process.bursts[0].cpu,
+        io: process.bursts[0].io,
+      });
+      return;
+    }
+
     this.processes.push(process);
     this.scheduler.add(process);
   }
 
-  tick() {
-    if (this.time >= this.totalTime) return;
+ tick() {
+  if (this.time >= this.totalTime) return;
 
-    // 🔹 DISCO (E/S)
-    const { finished, running } = this.disk.tick();
+  // 🔹 DISCO (E/S)
+  const { finished, running } = this.disk.tick();
 
-    // processos que terminaram I/O voltam pra fila
-    finished.forEach((p) => this.scheduler.add(p));
+  // 🔥 processos que terminaram IO
+  finished.forEach((p) => {
+    p.currentBurst++;
 
-    // voltou do disco
-    finished.forEach((p) => this.scheduler.add(p));
+    if (p.currentBurst >= p.bursts.length) {
+      p.state = "terminated";
+      p.finishTime = this.time;
+    } else {
+      const next = p.bursts[p.currentBurst];
 
-    // 🔥 REGISTRA DISCO
-    this.timeline.push({
-      time: this.time,
-      processId: running ? running.id : null,
-      type: "io",
-    });
+      p.remainingCpu = next.cpu;
+      p.state = "ready";
 
-    // 🔹 CPU livre
-    if (!this.currentProcess) {
-      this.currentProcess = this.scheduler.next();
-      this.quantumCounter = 0;
-
-      if (
-        this.currentProcess &&
-        this.currentProcess.responseTime === undefined
-      ) {
-        this.currentProcess.responseTime = this.time;
+      // 🔒 só entra se estiver no ciclo permitido
+      if (p.currentBurst <= this.currentGlobalCycle) {
+        this.scheduler.add(p);
       }
     }
+  });
 
-    // 🔹 EXECUÇÃO
-    if (this.currentProcess) {
-      const p = this.currentProcess;
+  // 🔥 REGISTRA DISCO
+  this.timeline.push({
+    time: this.time,
+    processId: running ? running.id : null,
+    type: "io",
+  });
 
-      p.state = "running";
-      p.remainingCpu--;
-      this.quantumCounter++;
+  // 🔹 CPU livre
+  if (!this.currentProcess) {
+    let next = this.scheduler.next();
 
-      this.timeline.push({ time: this.time, processId: p.id, type: "cpu" });
+    // 🔒 bloqueia ciclos futuros
+    while (next && next.currentBurst > this.currentGlobalCycle) {
+      this.scheduler.add(next);
+      next = this.scheduler.next();
+    }
 
-      // terminou CPU do ciclo
-      if (p.remainingCpu <= 0) {
-        p.currentCycle++;
+    this.currentProcess = next;
+    this.quantumCounter = 0;
 
-        if (p.ioTime > 0) {
-          this.disk.add(p);
-          p.remainingIo = p.ioTime;
+    if (
+      this.currentProcess &&
+      this.currentProcess.responseTime === undefined
+    ) {
+      this.currentProcess.responseTime = this.time;
+    }
+  }
+
+  // 🔹 EXECUÇÃO CPU
+  if (this.currentProcess) {
+    const p = this.currentProcess;
+
+    p.state = "running";
+
+    const burst = p.bursts[p.currentBurst] ?? { cpu: 0, io: 0 };
+    console.log("BURST:", burst);
+
+    p.remainingCpu--;
+    this.quantumCounter++;
+
+    this.timeline.push({
+      time: this.time,
+      processId: p.id,
+      type: "cpu",
+    });
+
+    // 🔥 terminou CPU
+    if (p.remainingCpu <= 0) {
+      if (burst.io > 0) {
+        console.log("ENVIANDO PARA O DISCO:", p.name);
+        // 🔥 CORRETO
+        p.remainingIo = burst.io;
+        p.state = "waiting";
+        this.disk.add(p);
+      } else {
+        p.currentBurst++;
+
+        if (p.currentBurst >= p.bursts.length) {
+          p.state = "terminated";
+          p.finishTime = this.time;
         } else {
-          p.currentCycle++;
+          const nextBurst = p.bursts[p.currentBurst];
+          p.remainingCpu = nextBurst.cpu;
 
-          if (p.currentCycle >= p.cycles) {
-            p.state = "terminated";
-            p.finishTime = this.time;
-          } else {
-            p.remainingCpu = p.cpuTime;
+          if (p.currentBurst <= this.currentGlobalCycle) {
+            p.state = "ready";
             this.scheduler.add(p);
           }
         }
-
-        this.currentProcess = null;
       }
 
-      // quantum estourou
-      else if (this.quantumCounter >= this.quantum) {
-        this.scheduler.requeue(p);
-        this.currentProcess = null;
-      }
-    } else {
-      this.timeline.push({ time: this.time, processId: null, type: "cpu" });
+      this.currentProcess = null;
     }
 
-    // 🔹 tempo de espera
-    this.scheduler.queue.forEach((p) => p.waitingTime++);
-
-    this.time++;
+    // 🔹 quantum
+    else if (this.quantumCounter >= this.quantum) {
+      this.scheduler.requeue(p);
+      this.currentProcess = null;
+    }
+  } else {
+    this.timeline.push({
+      time: this.time,
+      processId: null,
+      type: "cpu",
+    });
   }
+
+  // 🔹 tempo de espera
+  this.scheduler.queue.forEach((p) => p.waitingTime++);
+
+  this.time++;
+
+  // 🔥 avanço global de ciclo
+  if (this.canAdvanceCycle()) {
+    this.currentGlobalCycle++;
+
+    // 🔥 desbloqueia próximos ciclos
+    this.processes.forEach((p) => {
+      if (
+        p.state === "ready" &&
+        p.currentBurst === this.currentGlobalCycle
+      ) {
+        this.scheduler.add(p);
+      }
+    });
+  }
+}
 
   // 📊 MÉTRICAS
   getCPUUsage() {
-    const active = this.timeline.filter((t) => t.processId !== null).length;
-    return (active / this.timeline.length) * 100;
+    const cpuTimeline = this.timeline.filter((t) => t.type === "cpu");
+    const active = cpuTimeline.filter((t) => t.processId !== null).length;
+    return (active / cpuTimeline.length) * 100;
   }
 
   getFinishedCount() {

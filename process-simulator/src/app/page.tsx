@@ -53,8 +53,6 @@ export default function Page() {
   const getColor = (id: number | null, type: "cpu" | "io") => {
     if (id === null) return "bg-gray-600";
 
-    if (type === "io") return "bg-orange-500"; // disco
-
     const colors = [
       "bg-red-500",
       "bg-blue-500",
@@ -191,31 +189,38 @@ export default function Page() {
 
           <Button
             onClick={() => {
-              if (!form.name || form.cpuTime <= 0) return;
+  if (!form.name || form.cpuTime <= 0) return;
 
-              addProcess({
-                id: Date.now(),
-                name: form.name,
-                cpuTime: form.cpuTime,
-                remainingCpu: form.cpuTime,
-                ioTime: form.ioTime,
-                remainingIo: 0,
-                cycles: form.cycles,
-                currentCycle: 0,
-                state: "ready",
-                arrivalTime: timeline.length,
-                waitingTime: 0,
-              });
+  // 🔥 cria múltiplos ciclos (bursts)
+  const bursts = Array.from({ length: form.cycles }, () => ({
+    cpu: form.cpuTime,
+    io: form.ioTime,
+  }));
 
-              setForm({
-                name: "",
-                cpuTime: 0,
-                ioTime: 0,
-                cycles: 1,
-              });
-            }}
-            className="bg-secondary text-black px-3 rounded"
-          >
+  addProcess({
+    id: Date.now(),
+    name: form.name,
+
+    bursts,
+
+    currentBurst: 0,
+
+    remainingCpu: bursts[0].cpu,
+    remainingIo: 0,
+
+    state: "ready",
+    arrivalTime: timeline.length,
+    waitingTime: 0,
+  });
+
+  setForm({
+    name: "",
+    cpuTime: 0,
+    ioTime: 0,
+    cycles: 1,
+  });
+}}
+            >
             Add
           </Button>
         </div>
@@ -249,9 +254,9 @@ export default function Page() {
                 <td>{p.waitingTime}</td>
                 <td>{p.responseTime ?? "-"}</td>
                 <td>{p.finishTime ?? "-"}</td>
-                <td>{p.cpuTime}</td>
-                <td>{p.ioTime}</td>
-                <td>{p.cycles}</td>
+                <td>{p.bursts.map((b) => b.cpu).join(" | ")}</td>
+                <td>{p.bursts.map((b) => b.io).join(" | ")}</td>
+                <td>{p.bursts.length}</td>
               </tr>
             ))}
           </tbody>

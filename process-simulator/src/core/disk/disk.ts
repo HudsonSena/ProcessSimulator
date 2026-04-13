@@ -7,33 +7,39 @@ export class Disk {
   current: Process | null = null;
 
   add(process: Process) {
+    // 🔒 evita duplicação
+    if (this.current === process || this.queue.includes(process)) return;
+
+    // 🔒 NÃO redefine remainingIo aqui!
     process.state = "waiting";
-    process.remainingIo = process.ioTime;
+
     this.queue.push(process);
   }
 
   tick() {
     const finished: Process[] = [];
 
-    // se não tem processo no disco, pega o próximo
+    // 🔹 pega próximo processo
     if (!this.current && this.queue.length > 0) {
       this.current = this.queue.shift()!;
     }
 
-    // executa I/O
+    // 🔹 executa I/O
     if (this.current) {
-      this.current.remainingIo--;
+      const p = this.current;
 
-      if (this.current.remainingIo <= 0) {
-        this.current.state = "ready";
-        finished.push(this.current);
-        this.current = null;
+      p.remainingIo--; // 🔥 decrementa corretamente
+
+      if (p.remainingIo <= 0) {
+        finished.push(p);
+
+        this.current = null; // 🔥 libera o disco
       }
     }
 
     return {
       finished,
-      running: this.current, // 🔥 ESSENCIAL
+      running: this.current,
     };
   }
 }
