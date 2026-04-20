@@ -51,20 +51,21 @@ export class Simulator {
     this.processes.push(process);
     this.cpuQueue.add(process);
   };
-
-  // /core/simulator.ts
+  
+ // /core/simulator.ts
 
 tick = () => {
   if (this.time >= this.totalTime) return;
 
-  // 1. Processamento do Disco (I/O)
+  // 1. DISCO: Processa E/S
   const { finished, running: currentDiskProcess } = this.diskQueue.tick();
 
-  // Processos saindo do Disco -> Fim da fila da CPU
+  // Quando sai do disco, o ciclo (CPU + IO) desse burst acabou.
+  // AGORA sim avançamos para o próximo burst.
   finished.forEach((p) => {
-    p.currentBurst++;
+    p.currentBurst++; 
     if (p.currentBurst < p.bursts.length) {
-      p.remainingCpu = p.bursts[p.currentBurst].cpu;
+      p.remainingCpu = p.bursts[p.currentBurst].cpu; // Carrega nova CPU
       p.state = "ready";
       this.cpuQueue.add(p); 
     } else {
@@ -73,46 +74,49 @@ tick = () => {
     }
   });
 
-  // 2. Verificação de Preempção (Quantum) do tick anterior
-  // Se o quantum acabou, o processo que estava na CPU já foi para a fila 
-  // via addFirst/requeue no tick passado. Garantimos que a CPU esteja livre.
+  // 2. PREEMPÇÃO (Quantum)
+  // Se o quantum acabou, mas o processo ainda tem CPU (remainingCpu > 0),
+  // ele volta para a fila SEM mudar o currentBurst.
   if (this.currentProcessCPU && this.quantumCounter >= this.quantum) {
     const p = this.currentProcessCPU;
     if (p.remainingCpu > 0) {
       p.state = "ready";
-      this.cpuQueue.addFirst(p); // Devolve para o início da fila (Prioridade)
+      this.cpuQueue.addFirst(p); // Volta para o topo para retomar o que faltava
     }
     this.currentProcessCPU = null;
   }
 
-  // 3. Seleção do Processo para este tick
+  // 3. SELEÇÃO
   if (!this.currentProcessCPU) {
     this.currentProcessCPU = this.cpuQueue.next();
     this.quantumCounter = 0;
   }
 
-  // 4. Execução
+  // 4. EXECUÇÃO
   if (this.currentProcessCPU) {
     const p = this.currentProcessCPU;
     p.state = "running";
     p.remainingCpu--;
     this.quantumCounter++;
 
-    // Registro na timeline
     this.timeline.push({
       time: this.time,
       cpuProcessId: p.id,
       diskProcessId: currentDiskProcess ? currentDiskProcess.id : null
     });
 
-    // Se o burst de CPU acabou NESTE tick
+    // 5. TÉRMINO DO BURST DE CPU
     if (p.remainingCpu <= 0) {
       const burstData = p.bursts[p.currentBurst];
+
       if (burstData && burstData.io > 0) {
+        // Se tem disco, vai para a fila de espera do disco
         p.remainingIo = burstData.io;
         p.state = "waiting";
         this.diskQueue.add(p);
+        // O currentBurst SÓ avança quando ele sair do disco (ver passo 1)
       } else {
+        // Se não tem disco, esse burst acabou aqui.
         p.currentBurst++;
         if (p.currentBurst < p.bursts.length) {
           p.remainingCpu = p.bursts[p.currentBurst].cpu;
@@ -125,8 +129,6 @@ tick = () => {
       }
       this.currentProcessCPU = null;
     }
-    // Caso o Quantum acabe, NÃO limpamos aqui. Limpamos no INÍCIO do próximo tick.
-    // Isso garante que o registro na timeline seja feito corretamente.
   } else {
     this.timeline.push({
       time: this.time,
@@ -135,11 +137,10 @@ tick = () => {
     });
   }
 
-  // Contabilidade de espera
   this.processes.forEach(p => {
     if (p.state === "ready" && p !== this.currentProcessCPU) p.waitingTime++;
   });
 
   this.time++;
-};
+}; 
 }
