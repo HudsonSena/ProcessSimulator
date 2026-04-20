@@ -1,203 +1,145 @@
-// /core/simulator.ts
-
 import { Scheduler } from "./cpu/scheduler";
 import { Disk } from "./disk/disk";
 import { Process } from "./models/process";
 
 export class Simulator {
-  scheduler = new Scheduler();
-  disk = new Disk();
-
-  currentProcess: Process | null = null;
-
+  cpuQueue = new Scheduler();
+  diskQueue = new Disk();
+  currentProcessCPU: Process | null = null;
   time = 0;
   quantum: number;
   quantumCounter = 0;
-
-  currentGlobalCycle = 0;
-
   totalTime: number;
-
   processes: Process[] = [];
-  timeline: { time: number; processId: number | null; type: "cpu" | "io" }[] =
-    [];
+  timeline: { time: number; cpuProcessId: number | null; diskProcessId: number | null }[] = [];
 
   constructor(quantum: number, totalTime: number) {
     this.quantum = quantum;
     this.totalTime = totalTime;
   }
 
-  // 🔥 só avança ciclo quando TODOS terminaram o atual
-  canAdvanceCycle() {
-    return this.processes.every(
-      (p) =>
-        p.currentBurst > this.currentGlobalCycle ||
-        p.state === "terminated"
-    );
-  }
+  // ✅ Adicione esta função exatamente assim
+  getAverageWaitingTime = (): number => {
+    const total = this.processes.reduce((sum, p) => sum + (p.waitingTime || 0), 0);
+    return this.processes.length ? total / this.processes.length : 0;
+  };
 
-  addProcess(process: Process) {
+  getDiskUsage = (): number => {
+    const active = this.timeline.filter(t => t.diskProcessId !== null).length;
+    return this.timeline.length ? (active / this.timeline.length) * 100 : 0;
+  };
+  
+  getCPUUsage = (): number => {
+    const active = this.timeline.filter(t => t.cpuProcessId !== null).length;
+    return this.timeline.length ? (active / this.timeline.length) * 100 : 0;
+  };
+
+  getFinishedCount = (): number => {
+    return this.processes.filter(p => p.state === "terminated").length;
+  };
+
+  addProcess = (process: Process) => {
     const existing = this.processes.find((p) => p.name === process.name);
-
     if (existing) {
-      existing.bursts.push({
-        cpu: process.bursts[0].cpu,
-        io: process.bursts[0].io,
-      });
+      existing.bursts.push(...process.bursts);
       return;
     }
-
+    process.currentBurst = 0;
+    process.remainingCpu = process.bursts[0].cpu;
+    process.state = "ready";
+    process.waitingTime = 0;
     this.processes.push(process);
-    this.scheduler.add(process);
-  }
+    this.cpuQueue.add(process);
+  };
 
- tick() {
+  // /core/simulator.ts
+
+tick = () => {
   if (this.time >= this.totalTime) return;
 
-  // 🔹 DISCO (E/S)
-  const { finished, running } = this.disk.tick();
+  // 1. Processamento do Disco (I/O)
+  const { finished, running: currentDiskProcess } = this.diskQueue.tick();
 
-  // 🔥 processos que terminaram IO
+  // Processos saindo do Disco -> Fim da fila da CPU
   finished.forEach((p) => {
     p.currentBurst++;
-
-    if (p.currentBurst >= p.bursts.length) {
+    if (p.currentBurst < p.bursts.length) {
+      p.remainingCpu = p.bursts[p.currentBurst].cpu;
+      p.state = "ready";
+      this.cpuQueue.add(p); 
+    } else {
       p.state = "terminated";
       p.finishTime = this.time;
-    } else {
-      const next = p.bursts[p.currentBurst];
+    }
+  });
 
-      p.remainingCpu = next.cpu;
+  // 2. Verificação de Preempção (Quantum) do tick anterior
+  // Se o quantum acabou, o processo que estava na CPU já foi para a fila 
+  // via addFirst/requeue no tick passado. Garantimos que a CPU esteja livre.
+  if (this.currentProcessCPU && this.quantumCounter >= this.quantum) {
+    const p = this.currentProcessCPU;
+    if (p.remainingCpu > 0) {
       p.state = "ready";
-
-      // 🔒 só entra se estiver no ciclo permitido
-      if (p.currentBurst <= this.currentGlobalCycle) {
-        this.scheduler.add(p);
-      }
+      this.cpuQueue.addFirst(p); // Devolve para o início da fila (Prioridade)
     }
-  });
-
-  // 🔥 REGISTRA DISCO
-  this.timeline.push({
-    time: this.time,
-    processId: running ? running.id : null,
-    type: "io",
-  });
-
-  // 🔹 CPU livre
-  if (!this.currentProcess) {
-    let next = this.scheduler.next();
-
-    // 🔒 bloqueia ciclos futuros
-    while (next && next.currentBurst > this.currentGlobalCycle) {
-      this.scheduler.add(next);
-      next = this.scheduler.next();
-    }
-
-    this.currentProcess = next;
-    this.quantumCounter = 0;
-
-    if (
-      this.currentProcess &&
-      this.currentProcess.responseTime === undefined
-    ) {
-      this.currentProcess.responseTime = this.time;
-    }
+    this.currentProcessCPU = null;
   }
 
-  // 🔹 EXECUÇÃO CPU
-  if (this.currentProcess) {
-    const p = this.currentProcess;
+  // 3. Seleção do Processo para este tick
+  if (!this.currentProcessCPU) {
+    this.currentProcessCPU = this.cpuQueue.next();
+    this.quantumCounter = 0;
+  }
 
+  // 4. Execução
+  if (this.currentProcessCPU) {
+    const p = this.currentProcessCPU;
     p.state = "running";
-
-    const burst = p.bursts[p.currentBurst] ?? { cpu: 0, io: 0 };
-    console.log("BURST:", burst);
-
     p.remainingCpu--;
     this.quantumCounter++;
 
+    // Registro na timeline
     this.timeline.push({
       time: this.time,
-      processId: p.id,
-      type: "cpu",
+      cpuProcessId: p.id,
+      diskProcessId: currentDiskProcess ? currentDiskProcess.id : null
     });
 
-    // 🔥 terminou CPU
+    // Se o burst de CPU acabou NESTE tick
     if (p.remainingCpu <= 0) {
-      if (burst.io > 0) {
-        console.log("ENVIANDO PARA O DISCO:", p.name);
-        // 🔥 CORRETO
-        p.remainingIo = burst.io;
+      const burstData = p.bursts[p.currentBurst];
+      if (burstData && burstData.io > 0) {
+        p.remainingIo = burstData.io;
         p.state = "waiting";
-        this.disk.add(p);
+        this.diskQueue.add(p);
       } else {
         p.currentBurst++;
-
-        if (p.currentBurst >= p.bursts.length) {
+        if (p.currentBurst < p.bursts.length) {
+          p.remainingCpu = p.bursts[p.currentBurst].cpu;
+          p.state = "ready";
+          this.cpuQueue.add(p);
+        } else {
           p.state = "terminated";
           p.finishTime = this.time;
-        } else {
-          const nextBurst = p.bursts[p.currentBurst];
-          p.remainingCpu = nextBurst.cpu;
-
-          if (p.currentBurst <= this.currentGlobalCycle) {
-            p.state = "ready";
-            this.scheduler.add(p);
-          }
         }
       }
-
-      this.currentProcess = null;
+      this.currentProcessCPU = null;
     }
-
-    // 🔹 quantum
-    else if (this.quantumCounter >= this.quantum) {
-      this.scheduler.requeue(p);
-      this.currentProcess = null;
-    }
+    // Caso o Quantum acabe, NÃO limpamos aqui. Limpamos no INÍCIO do próximo tick.
+    // Isso garante que o registro na timeline seja feito corretamente.
   } else {
     this.timeline.push({
       time: this.time,
-      processId: null,
-      type: "cpu",
+      cpuProcessId: null,
+      diskProcessId: currentDiskProcess ? currentDiskProcess.id : null
     });
   }
 
-  // 🔹 tempo de espera
-  this.scheduler.queue.forEach((p) => p.waitingTime++);
+  // Contabilidade de espera
+  this.processes.forEach(p => {
+    if (p.state === "ready" && p !== this.currentProcessCPU) p.waitingTime++;
+  });
 
   this.time++;
-
-  // 🔥 avanço global de ciclo
-  if (this.canAdvanceCycle()) {
-    this.currentGlobalCycle++;
-
-    // 🔥 desbloqueia próximos ciclos
-    this.processes.forEach((p) => {
-      if (
-        p.state === "ready" &&
-        p.currentBurst === this.currentGlobalCycle
-      ) {
-        this.scheduler.add(p);
-      }
-    });
-  }
-}
-
-  // 📊 MÉTRICAS
-  getCPUUsage() {
-    const cpuTimeline = this.timeline.filter((t) => t.type === "cpu");
-    const active = cpuTimeline.filter((t) => t.processId !== null).length;
-    return (active / cpuTimeline.length) * 100;
-  }
-
-  getFinishedCount() {
-    return this.processes.filter((p) => p.state === "terminated").length;
-  }
-
-  getAverageWaitingTime() {
-    const total = this.processes.reduce((sum, p) => sum + p.waitingTime, 0);
-    return total / this.processes.length;
-  }
+};
 }

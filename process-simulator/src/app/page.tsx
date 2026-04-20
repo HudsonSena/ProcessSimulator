@@ -64,22 +64,25 @@ export default function Page() {
     return colors[id % colors.length];
   };
 
-  // 🔥 GANTT AGRUPADO (blocos contínuos)
-  const groupedTimeline = [] as {
-    processId: number | null;
-    duration: number;
-    type: "cpu" | "io";
-  }[];
-
+  // 🔥 GANTT PARA CPU
+  const cpuGrouped = [] as { processId: number | null; duration: number }[];
   timeline.forEach((t) => {
-    const last = groupedTimeline[groupedTimeline.length - 1];
+    const last = cpuGrouped[cpuGrouped.length - 1];
+    // Note que agora usamos t.cpuProcessId
+    if (!last || last.processId !== t.cpuProcessId) {
+      cpuGrouped.push({ processId: t.cpuProcessId, duration: 1 });
+    } else {
+      last.duration++;
+    }
+  });
 
-    if (!last || last.processId !== t.processId || last.type !== t.type) {
-      groupedTimeline.push({
-        processId: t.processId,
-        duration: 1,
-        type: t.type, // 👈 ESSENCIAL
-      });
+  // 🔥 GANTT PARA DISCO
+  const diskGrouped = [] as { processId: number | null; duration: number }[];
+  timeline.forEach((t) => {
+    const last = diskGrouped[diskGrouped.length - 1];
+    // Note que agora usamos t.diskProcessId
+    if (!last || last.processId !== t.diskProcessId) {
+      diskGrouped.push({ processId: t.diskProcessId, duration: 1 });
     } else {
       last.duration++;
     }
@@ -263,72 +266,80 @@ export default function Page() {
         </table>
       </div>
 
-      <div className="bg-gray-800 p-4 rounded-2xl col-span-3">
-        <h2 className="text-xl mb-2">Fila de Prontos (Ready)</h2>
+      {/* SEÇÃO DE FILAS DINÂMICAS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 col-span-3">
+        {/* FILA DA CPU */}
+        <div className="bg-gray-800 p-4 rounded-2xl border border-blue-500/30">
+          <h2 className="text-xl mb-2 text-blue-400">Fila de Espera: CPU</h2>
+          <div className="flex gap-2 flex-wrap min-h-[40px]">
+            {processes
+              .filter((p) => p.state === "ready")
+              .map((p) => (
+                <div key={p.id} className="bg-blue-600 px-3 py-1 rounded text-sm animate-pulse">
+                  {p.name} <span className="text-[10px] opacity-70">(Rest: {p.remainingCpu})</span>
+                </div>
+              ))}
+            {processes.filter(p => p.state === "ready").length === 0 && 
+              <span className="text-gray-500 text-sm italic">Fila vazia</span>}
+          </div>
+        </div>
 
-        <div className="flex gap-2">
-          {processes
-            .filter((p) => p.state === "ready")
-            .map((p) => (
-              <div key={p.id} className="bg-blue-600 px-3 py-1 rounded text-sm">
-                {p.name} (CPU: {p.remainingCpu})
-              </div>
-            ))}
+        {/* FILA DO DISCO */}
+        <div className="bg-gray-800 p-4 rounded-2xl border border-green-500/30">
+          <h2 className="text-xl mb-2 text-green-400">Fila de Espera: Disco</h2>
+          <div className="flex gap-2 flex-wrap min-h-[40px]">
+            {processes
+              .filter((p) => p.state === "waiting")
+              .map((p) => (
+                <div key={p.id} className="bg-green-600 px-3 py-1 rounded text-sm">
+                  {p.name} <span className="text-[10px] opacity-70">(IO: {p.remainingIo})</span>
+                </div>
+              ))}
+            {processes.filter(p => p.state === "waiting").length === 0 && 
+              <span className="text-gray-500 text-sm italic">Sem processos em I/O</span>}
+          </div>
         </div>
       </div>
 
-      {/* CPU */}
+      {/* GRÁFICO GANTT: CPU */}
       <div className="col-span-3 bg-gray-800 p-4 rounded-2xl">
-        <h2 className="text-xl mb-4">CPU (Execução)</h2>
-
-        <div className="flex overflow-x-auto items-end flex-wrap">
-          {groupedTimeline
-            .filter((block) => block.type === "cpu")
-            .map((block, i) => (
-              <div key={i} className="flex flex-col items-center">
-                <div
-                  className={`${getColor(
-                    block.processId,
-                    "cpu"
-                  )} flex items-center justify-center text-xs border-r border-gray-900`}
-                  style={{
-                    width: `${block.duration * 30}px`,
-                    height: "40px",
-                  }}
-                >
-                  {getProcessName(block.processId)}
-                </div>
-
-                <span className="text-[10px] mt-1">{block.duration}</span>
+        <h2 className="text-xl mb-4 border-l-4 border-blue-500 pl-2">Uso da CPU (Execução Real)</h2>
+        <div className="flex overflow-x-auto pb-4 custom-scrollbar">
+          {cpuGrouped.map((block, i) => (
+            <div key={i} className="flex flex-col items-center flex-shrink-0">
+              <div
+                className={`${getColor(block.processId, "cpu")} flex items-center justify-center text-xs border-r border-gray-900 transition-all`}
+                style={{
+                  width: `${Math.max(block.duration * 20, 30)}px`,
+                  height: "40px",
+                }}
+              >
+                {getProcessName(block.processId)}
               </div>
-            ))}
+              <span className="text-[9px] mt-1 text-gray-400">{block.duration}s</span>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* DISCO */}
+      {/* GRÁFICO GANTT: DISCO */}
       <div className="col-span-3 bg-gray-800 p-4 rounded-2xl">
-        <h2 className="text-xl mb-4">Disco (E/S)</h2>
-        <div className="flex overflow-x-auto items-end flex-wrap">
-          {groupedTimeline
-            .filter((block) => block.type === "io")
-            .map((block, i) => (
-              <div key={i} className="flex flex-col items-center">
-                <div
-                  className={`${getColor(
-                    block.processId,
-                    "io"
-                  )} flex items-center justify-center text-xs border-r border-gray-900`}
-                  style={{
-                    width: `${block.duration * 30}px`,
-                    height: "40px",
-                  }}
-                >
-                  {getProcessName(block.processId)}
-                </div>
-
-                <span className="text-[10px] mt-1">{block.duration}</span>
+        <h2 className="text-xl mb-4 border-l-4 border-green-500 pl-2">Uso do Disco (I/O Real)</h2>
+        <div className="flex overflow-x-auto pb-4 custom-scrollbar">
+          {diskGrouped.map((block, i) => (
+            <div key={i} className="flex flex-col items-center flex-shrink-0">
+              <div
+                className={`${getColor(block.processId, "io")} flex items-center justify-center text-xs border-r border-gray-900 transition-all`}
+                style={{
+                  width: `${Math.max(block.duration * 20, 30)}px`,
+                  height: "40px",
+                }}
+              >
+                {getProcessName(block.processId)}
               </div>
-            ))}
+              <span className="text-[9px] mt-1 text-gray-400">{block.duration}s</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>

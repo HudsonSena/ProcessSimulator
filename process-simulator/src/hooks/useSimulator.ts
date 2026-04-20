@@ -1,18 +1,32 @@
 // /hooks/useSimulator.ts
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Simulator } from "@/core/simulator";
 import { Process } from "@/core/models/process";
 
+// Definimos o que o Simulator deve ter para que o TS não reclame
+interface ISimulator {
+  time: number;
+  processes: Process[];
+  timeline: TimelineItem[];
+  tick: () => void;
+  addProcess: (p: Process) => void;
+  getCPUUsage: () => number;
+  getDiskUsage: () => number;
+  getFinishedCount: () => number;
+  getAverageWaitingTime: () => number;
+}
+
 type TimelineItem = {
   time: number;
-  processId: number | null;
-  type: "cpu" | "io";
+  cpuProcessId: number | null;
+  diskProcessId: number | null;
 };
 
 type SimulatorState = {
   processes: Process[];
   cpuUsage: number;
+  diskUsage: number;
   finished: number;
   avgWaiting: number;
   timeline: TimelineItem[];
@@ -23,88 +37,80 @@ export function useSimulator(config: {
   totalTime: number;
   processes: Process[];
 }) {
-  const simulatorRef = useRef<Simulator | null>(null);
+  // Tipamos explicitamente a instância
+  const [simulator, setSimulator] = useState<ISimulator>(() => {
+    const sim = new Simulator(config.quantum, config.totalTime);
+    config.processes.forEach((p) => sim.addProcess(p));
+    return sim as unknown as ISimulator;
+  });
 
-  // ✅ inicialização segura (apenas uma vez)
-  if (!simulatorRef.current) {
-    simulatorRef.current = new Simulator(
-      config.quantum,
-      config.totalTime
-    );
-  }
-
-  // ✅ garante que não é null
-  const simulator = simulatorRef.current!;
-
-  const [state, setState] = useState<SimulatorState>({
-    processes: [],
+  const [state, setState] = useState<SimulatorState>(() => ({
+    processes: [...simulator.processes],
     cpuUsage: 0,
+    diskUsage: 0,
     finished: 0,
     avgWaiting: 0,
     timeline: [],
-  });
-
-  // ✅ adiciona processos apenas uma vez
-  useEffect(() => {
-    config.processes.forEach((p) => simulator.addProcess(p));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+  }));
 
   const [isRunning, setIsRunning] = useState(false);
   const [speed, setSpeed] = useState(500);
-  
-  const addProcess = (process: Process) => {
-  simulator.addProcess(process);
-  setState((prev) => ({
-    ...prev,
-    processes: [...prev.processes, process],
-  }));
-  };
 
-  const reset = () => {
-  simulatorRef.current = new Simulator(
-    config.quantum,
-    config.totalTime
-  );
-
-  setState({
-    processes: [],
-    cpuUsage: 0,
-    finished: 0,
-    avgWaiting: 0,
-    timeline: [],
-  });
-
-  setIsRunning(false);
-};
-  
-  // ✅ loop da simulação
-  useEffect(() => {
-  if (!isRunning) return;
-
-  const interval = setInterval(() => {
-    simulator.tick();
-
-    setState({
+  const addProcess = useCallback((process: Process) => {
+    simulator.addProcess(process);
+    setState((prev) => ({
+      ...prev,
       processes: [...simulator.processes],
-      cpuUsage: simulator.getCPUUsage(),
-      finished: simulator.getFinishedCount(),
-      avgWaiting: simulator.getAverageWaitingTime(),
-      timeline: [...simulator.timeline],
-    });
-  }, speed);
+    }));
+  }, [simulator]);
 
-  return () => clearInterval(interval);
-}, [isRunning, speed, simulator]);
+  const reset = useCallback(() => {
+    setIsRunning(false);
+    const newSim = new Simulator(config.quantum, config.totalTime);
+    config.processes.forEach((p) => newSim.addProcess(p));
+    
+    setSimulator(newSim as unknown as ISimulator);
+    setState({
+      processes: [...newSim.processes],
+      cpuUsage: 0,
+      diskUsage: 0,
+      finished: 0,
+      avgWaiting: 0,
+      timeline: [],
+    });
+  }, [config.quantum, config.totalTime, config.processes]);
+
+  useEffect(() => {
+    if (!isRunning) return;
+
+    const interval = setInterval(() => {
+      if (simulator.time >= config.totalTime) {
+        setIsRunning(false);
+        return;
+      }
+
+      simulator.tick();
+
+      setState({
+        processes: [...simulator.processes],
+        cpuUsage: simulator.getCPUUsage(),
+        diskUsage: simulator.getDiskUsage(),
+        finished: simulator.getFinishedCount(),
+        avgWaiting: simulator.getAverageWaitingTime(),
+        timeline: [...simulator.timeline],
+      });
+    }, speed);
+
+    return () => clearInterval(interval);
+  }, [isRunning, speed, simulator, config.totalTime]);
 
   return {
-  ...state,
-  isRunning,
-  setIsRunning,
-  speed,
-  setSpeed,
-  addProcess,
-  reset,
-};
+    ...state,
+    isRunning,
+    setIsRunning,
+    speed,
+    setSpeed,
+    addProcess,
+    reset,
+  };
 }
