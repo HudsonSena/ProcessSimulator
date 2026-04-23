@@ -2,76 +2,125 @@
 #include <stdlib.h>
 #include <pthread.h>
 
-#define TAM 10
+int *vetor;
+int tamanho = 6;
 
-int vetor[TAM] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+pthread_mutex_t mutex;
 
-void show(int *vetor, int tam) {
-    int i = 0;
-    printf("Vetor: ");
-    for (i = 0; i < tam; i++) {
+// Ordenar vetor
+void* ordenar(void* arg) {
+    pthread_mutex_lock(&mutex);
+
+    for (int i = 0; i < tamanho - 1; i++) {
+        for (int j = i + 1; j < tamanho; j++) {
+            if (vetor[i] > vetor[j]) {
+                int temp = vetor[i];
+                vetor[i] = vetor[j];
+                vetor[j] = temp;
+            }
+        }
+    }
+
+    printf("Thread Ordenar: ");
+    for (int i = 0; i < tamanho; i++) {
         printf("%d ", vetor[i]);
     }
     printf("\n");
+
+    pthread_mutex_unlock(&mutex);
     pthread_exit(NULL);
 }
-/*
-float threadSoma(float *a, float tam) {
-    printf("---Thread 1 Soma--- ");
-    float soma = 0;
-    int i = 0;
-    for (i = 0; i < tam; i++) {
-        soma += a[i];
-    }
-    printf("soma: %f\n", soma);
-    return *a;
+
+// Adicionar número (fixo para evitar time.h)
+void* adicionar(void* arg) {
+    int num = 42; // número fixo (sem usar rand/time)
+
+    pthread_mutex_lock(&mutex);
+
+    vetor = realloc(vetor, (tamanho + 1) * sizeof(int));
+    vetor[tamanho] = num;
+    tamanho++;
+
+    printf("Thread Adicionar: adicionou %d\n", num);
+
+    pthread_mutex_unlock(&mutex);
+    pthread_exit(NULL);
 }
 
-float threadMedia(float *a, float tam) {
-    printf("---Thread 2 Media--- ");
-    float soma = 0;
-    int i = 0;
-    for (i = 0; i < tam; i++) {
-        soma += a[i];
+// Remover elemento (último)
+void* remover(void* arg) {
+    pthread_mutex_lock(&mutex);
+
+    if (tamanho > 0) {
+        int removido = vetor[tamanho - 1];
+        tamanho--;
+
+        vetor = realloc(vetor, tamanho * sizeof(int));
+
+        printf("Thread Remover: removeu %d\n", removido);
+    } else {
+        printf("Thread Remover: vetor vazio\n");
     }
-    float media = soma/tam;
-    printf("media: %f\n", media);
-    return *a;
+
+    pthread_mutex_unlock(&mutex);
+    pthread_exit(NULL);
 }
 
-float threadPares(float *a, float tam) {
-    printf("---Thread 3 Pares--- ");
-    float soma = 0;
-    int i = 0;
-    for (i = 0; i < tam; i++) {
-        if ((int)a[i] % 2 == 0) {
-            soma += a[i];
+// Calcular média
+void* media(void* arg) {
+    float resultado = 0;
+
+    pthread_mutex_lock(&mutex);
+
+    if (tamanho > 0) {
+        int soma = 0;
+        for (int i = 0; i < tamanho; i++) {
+            soma += vetor[i];
         }
+        resultado = (float)soma / tamanho;
+        printf("Thread Media: %.2f\n", resultado);
+    } else {
+        printf("Thread Media: vetor vazio\n");
     }
-    printf("soma dos pares: %f\n", soma);
-    return *a;
+
+    pthread_mutex_unlock(&mutex);
+    pthread_exit(NULL);
 }
 
-float threadMaior(float *a, float tam) {
-    printf("---Thread 4 Maior Valor--- ");
-    float maior = a[0];
-    int i = 0;
-    for (i = 1; i < tam; i++) {
-        if (a[i] > maior) {
-            maior = a[i];
-        }
-    }
-    printf("maior: %f\n", maior);
-    return *a;
-}
-*/
 int main() {
-    pthread_t threads[4];
-    pthread_create(&threads[0], NULL, (void *)show, (void *)vetor);
-    pthread_join(threads[0], NULL);
-    //threadSoma(a, tam);
-    //threadMedia(a, tam);
-    //threadPares(a, tam);
-    //threadMaior(a, tam);
+    pthread_t t1, t2, t3, t4;
+
+    pthread_mutex_init(&mutex, NULL);
+
+    // Alocando vetor inicial
+    vetor = malloc(tamanho * sizeof(int));
+    int inicial[] = {10, 3, 5, 8, 2, 7};
+
+    for (int i = 0; i < tamanho; i++) {
+        vetor[i] = inicial[i];
+    }
+
+    // Criando threads
+    pthread_create(&t1, NULL, ordenar, NULL);
+    pthread_create(&t2, NULL, adicionar, NULL);
+    pthread_create(&t3, NULL, remover, NULL);
+    pthread_create(&t4, NULL, media, NULL);
+
+    // Espera finalizar
+    pthread_join(t1, NULL);
+    pthread_join(t2, NULL);
+    pthread_join(t3, NULL);
+    pthread_join(t4, NULL);
+
+    // Estado final
+    printf("\nVetor final: ");
+    for (int i = 0; i < tamanho; i++) {
+        printf("%d ", vetor[i]);
+    }
+    printf("\n");
+
+    free(vetor);
+    pthread_mutex_destroy(&mutex);
+
     return 0;
 }
