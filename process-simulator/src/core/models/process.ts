@@ -13,9 +13,8 @@ export interface Process {
   id: number;
   name: string;
 
-  bursts: Burst[]; // 🔥 lista de ciclos (CPU + IO)
-
-  currentBurst: number; // 🔥 índice do ciclo atual
+  bursts: Burst[];
+  currentBurst: number;
 
   remainingCpu: number;
   remainingIo: number;
@@ -23,6 +22,9 @@ export interface Process {
   state: ProcessState;
 
   arrivalTime: number;
+
+  // 1 = maior prioridade, 10 = menor prioridade
+  priority: number;
 
   // métricas
   waitingTime: number;

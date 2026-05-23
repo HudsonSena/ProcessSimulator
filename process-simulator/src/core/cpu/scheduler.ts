@@ -1,52 +1,116 @@
 import { Process } from "../models/process";
 
-export class Scheduler {
-  queue: Process[] = [];
+export type SchedulingAlgorithm = "fcfs" | "sjf" | "rr" | "priority" | "multilevel";
 
-  // 🔹 Adiciona ao FIM da fila (usado para novos processos e processos vindos do disco)
+// Quantum por nível no algoritmo Multilevel Queue
+export const MULTILEVEL_QUANTUMS: [number, number, number] = [2, 4, Infinity];
+// Limites de prioridade para cada nível do Multilevel Queue
+// Nível 0: prioridade 1-3 (alta), Nível 1: 4-7 (média), Nível 2: 8-10 (baixa)
+export const MULTILEVEL_LEVEL_LABELS = ["Alta (1–3)", "Média (4–7)", "Baixa (8–10)"];
+
+export class Scheduler {
+  algorithm: SchedulingAlgorithm;
+  queue: Process[] = [];
+  multiQueues: [Process[], Process[], Process[]] = [[], [], []];
+
+  constructor(algorithm: SchedulingAlgorithm = "fcfs") {
+    this.algorithm = algorithm;
+  }
+
+  getLevelForProcess(process: Process): 0 | 1 | 2 {
+    const p = process.priority ?? 5;
+    if (p <= 3) return 0;
+    if (p <= 7) return 1;
+    return 2;
+  }
+
   add(process: Process) {
     if (process.state === "waiting") return;
-    if (this.queue.includes(process)) return;
-
     process.state = "ready";
-    this.queue.push(process);
+
+    if (this.algorithm === "multilevel") {
+      const level = this.getLevelForProcess(process);
+      if (!this.multiQueues[level].includes(process)) {
+        this.multiQueues[level].push(process);
+      }
+    } else {
+      if (!this.queue.includes(process)) {
+        this.queue.push(process);
+      }
+    }
   }
 
-  // 🔥 NOVO: Adiciona ao INÍCIO da fila (usado especificamente para quem sofreu Quantum)
-  // Isso garante que ele tenha prioridade sobre quem já estava na fila ou quem acabou de chegar do disco
   addFirst(process: Process) {
-  // Se o processo já está na fila, não duplica, mas garante que está no topo
-  const index = this.queue.indexOf(process);
-  if (index > -1) {
-    this.queue.splice(index, 1);
+    process.state = "ready";
+
+    if (this.algorithm === "multilevel") {
+      const level = this.getLevelForProcess(process);
+      const idx = this.multiQueues[level].indexOf(process);
+      if (idx > -1) this.multiQueues[level].splice(idx, 1);
+      this.multiQueues[level].unshift(process);
+    } else {
+      const idx = this.queue.indexOf(process);
+      if (idx > -1) this.queue.splice(idx, 1);
+      this.queue.unshift(process);
+    }
   }
-  process.state = "ready";
-  this.queue.unshift(process); // Coloca no topo para ser o próximo
-}
 
   next(): Process | null {
-    if (this.queue.length === 0) return null;
-
-    // 🚨 IMPORTANTE: Removi o sort() agressivo que estava no topo.
-    // Se você ordenar por currentBurst aqui, a lógica de "prioridade de preempção" 
-    // se quebra, pois o sort reorganiza a fila a cada pedido de processo.
-    // Agora o next respeita estritamente a ordem da fila (FIFO com exceção do addFirst).
-
-    const process = this.queue.shift() || null;
-
-    if (process) {
-      process.state = "running";
+    if (this.algorithm === "multilevel") {
+      for (const q of this.multiQueues) {
+        if (q.length > 0) {
+          const p = q.shift()!;
+          p.state = "running";
+          return p;
+        }
+      }
+      return null;
     }
 
+    if (this.queue.length === 0) return null;
+
+    let idx = 0;
+
+    if (this.algorithm === "sjf") {
+      idx = this.queue.reduce((best, p, i) =>
+        p.remainingCpu < this.queue[best].remainingCpu ? i : best, 0);
+    } else if (this.algorithm === "priority") {
+      idx = this.queue.reduce((best, p, i) =>
+        (p.priority ?? 5) < (this.queue[best].priority ?? 5) ? i : best, 0);
+    }
+    // fcfs e rr: idx = 0 (FIFO)
+
+    const [process] = this.queue.splice(idx, 1);
+    process.state = "running";
     return process;
   }
 
-  // 🔄 Ajustado para usar a lógica de prioridade
   requeue(process: Process) {
     if (process.state !== "running") return;
     process.state = "ready";
-
-    // Se o objetivo é prioridade total para quem sofreu quantum:
     this.addFirst(process);
+  }
+
+  // Verifica se há processo de maior prioridade aguardando (preempção)
+  hasHigherPriority(current: Process): boolean {
+    if (this.algorithm === "priority") {
+      return this.queue.some(p => (p.priority ?? 5) < (current.priority ?? 5));
+    }
+    if (this.algorithm === "multilevel") {
+      const currentLevel = this.getLevelForProcess(current);
+      for (let i = 0; i < currentLevel; i++) {
+        if (this.multiQueues[i].length > 0) return true;
+      }
+    }
+    return false;
+  }
+
+  // Retorna o quantum efetivo para o processo atual
+  getQuantumForProcess(process: Process, defaultQuantum: number): number {
+    if (this.algorithm === "fcfs" || this.algorithm === "sjf") return Infinity;
+    if (this.algorithm === "multilevel") {
+      return MULTILEVEL_QUANTUMS[this.getLevelForProcess(process)];
+    }
+    return defaultQuantum;
   }
 }

@@ -1,20 +1,23 @@
-// /hooks/useSimulator.ts
-
 import { useEffect, useState, useCallback } from "react";
 import { Simulator } from "@/core/simulator";
+import { SchedulingAlgorithm } from "@/core/cpu/scheduler";
 import { Process } from "@/core/models/process";
 
-// Definimos o que o Simulator deve ter para que o TS não reclame
 interface ISimulator {
   time: number;
   processes: Process[];
   timeline: TimelineItem[];
+  algorithm: SchedulingAlgorithm;
   tick: () => void;
   addProcess: (p: Process) => void;
   getCPUUsage: () => number;
   getDiskUsage: () => number;
   getFinishedCount: () => number;
   getAverageWaitingTime: () => number;
+  cpuQueue: {
+    multiQueues: [Process[], Process[], Process[]];
+    queue: Process[];
+  };
 }
 
 type TimelineItem = {
@@ -35,11 +38,11 @@ type SimulatorState = {
 export function useSimulator(config: {
   quantum: number;
   totalTime: number;
+  algorithm: SchedulingAlgorithm;
   processes: Process[];
 }) {
-  // Tipamos explicitamente a instância
   const [simulator, setSimulator] = useState<ISimulator>(() => {
-    const sim = new Simulator(config.quantum, config.totalTime);
+    const sim = new Simulator(config.quantum, config.totalTime, config.algorithm);
     config.processes.forEach((p) => sim.addProcess(p));
     return sim as unknown as ISimulator;
   });
@@ -66,9 +69,9 @@ export function useSimulator(config: {
 
   const reset = useCallback(() => {
     setIsRunning(false);
-    const newSim = new Simulator(config.quantum, config.totalTime);
+    const newSim = new Simulator(config.quantum, config.totalTime, config.algorithm);
     config.processes.forEach((p) => newSim.addProcess(p));
-    
+
     setSimulator(newSim as unknown as ISimulator);
     setState({
       processes: [...newSim.processes],
@@ -78,7 +81,7 @@ export function useSimulator(config: {
       avgWaiting: 0,
       timeline: [],
     });
-  }, [config.quantum, config.totalTime, config.processes]);
+  }, [config.quantum, config.totalTime, config.algorithm, config.processes]);
 
   useEffect(() => {
     if (!isRunning) return;
@@ -112,5 +115,7 @@ export function useSimulator(config: {
     setSpeed,
     addProcess,
     reset,
+    algorithm: simulator.algorithm,
+    cpuQueue: simulator.cpuQueue,
   };
 }
