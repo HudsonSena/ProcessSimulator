@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador de Paginação</title>
+
+<style>
+
+body{
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    background:#f4f4f4;
+}
+
+h1,h2{
+    color:#333;
+}
+
+.card{
+    background:white;
+    padding:15px;
+    margin-bottom:20px;
+    border-radius:10px;
+    box-shadow:0 2px 6px rgba(0,0,0,.15);
+}
+
+input,button{
+    padding:8px;
+    margin:5px;
+}
+
+button{
+    cursor:pointer;
+}
+
+table{
+    width:100%;
+    border-collapse: collapse;
+    margin-top:10px;
+}
+
+th,td{
+    border:1px solid #ccc;
+    padding:8px;
+    text-align:center;
+}
+
+th{
+    background:#ddd;
+}
+
+.memory{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    margin-top:15px;
+}
+
+.block{
+    width:90px;
+    height:70px;
+    border-radius:8px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    color:white;
+    font-weight:bold;
+}
+
+.page{
+    background:#3b82f6;
+}
+
+.frame{
+    background:#16a34a;
+}
+
+.result{
+    font-size:18px;
+    margin-top:10px;
+}
+
+</style>
+</head>
+<body>
+
+<h1>Simulador de Paginação</h1>
+
+<div class="card">
+
+<h2>Configuração</h2>
+
+<label>Tamanho da Página</label>
+<input id="pageSize" type="number" value="1024">
+
+<label>Memória Lógica</label>
+<input id="logicalSize" type="number" value="8192">
+
+<label>Memória Física</label>
+<input id="physicalSize" type="number" value="4096">
+
+<button onclick="gerar()">Gerar</button>
+
+</div>
+
+<div id="info"></div>
+
+<div id="mapping"></div>
+
+<div id="binary"></div>
+
+<div id="visual"></div>
+
+<div class="card">
+
+<h2>Tradução de Endereço</h2>
+
+<input
+    id="logicalAddress"
+    type="number"
+    placeholder="Digite um endereço lógico"
+/>
+
+<button onclick="traduzir()">
+    Traduzir
+</button>
+
+<div id="translation"></div>
+
+</div>
+
+<script>
+
+let tabelaPaginas = [];
+let tamanhoPagina = 1024;
+let bitsPagina = 0;
+
+function gerar(){
+
+    tamanhoPagina =
+        Number(document.getElementById("pageSize").value);
+
+    const memoriaLogica =
+        Number(document.getElementById("logicalSize").value);
+
+    const memoriaFisica =
+        Number(document.getElementById("physicalSize").value);
+
+    const paginas =
+        memoriaLogica / tamanhoPagina;
+
+    const quadros =
+        memoriaFisica / tamanhoPagina;
+
+    bitsPagina =
+        Math.ceil(Math.log2(paginas));
+
+    const bitsOffset =
+        Math.ceil(Math.log2(tamanhoPagina));
+
+    document.getElementById("info").innerHTML = `
+        <div class="card">
+            <h2>Informações</h2>
+
+            <p><b>Páginas:</b> ${paginas}</p>
+            <p><b>Quadros:</b> ${quadros}</p>
+
+            <p>
+                <b>Bits para identificar página:</b>
+                ${bitsPagina}
+            </p>
+
+            <p>
+                <b>Bits para deslocamento (offset):</b>
+                ${bitsOffset}
+            </p>
+        </div>
+    `;
+
+    tabelaPaginas = [];
+
+    // cria lista de quadros disponíveis
+    const quadrosLivres = [];
+
+    for (let i = 0; i < quadros; i++) {
+        quadrosLivres.push(i);
+    }
+
+    // embaralha os quadros
+    for (let i = quadrosLivres.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+
+        [quadrosLivres[i], quadrosLivres[j]] =
+        [quadrosLivres[j], quadrosLivres[i]];
+    }
+
+    // aloca páginas
+    for (let i = 0; i < paginas; i++) {
+
+        tabelaPaginas.push({
+            pagina: i,
+            quadro: quadrosLivres[i % quadrosLivres.length]
+        });
+
+    }
+
+    gerarTabelaMapeamento();
+    gerarTabelaBinaria();
+    gerarVisualizacao();
+}
+
+function gerarTabelaMapeamento(){
+
+    let html = `
+    <div class="card">
+
+    <h2>Mapeamento Página → Quadro</h2>
+
+    <table>
+    <tr>
+        <th>Página</th>
+        <th>Quadro</th>
+    </tr>
+    `;
+
+    tabelaPaginas.forEach(item => {
+
+        html += `
+        <tr>
+            <td>${item.pagina}</td>
+            <td>${item.quadro}</td>
+        </tr>
+        `;
+
+    });
+
+    html += `
+    </table>
+    </div>
+    `;
+
+    document.getElementById("mapping").innerHTML = html;
+}
+
+function gerarTabelaBinaria(){
+
+    let html = `
+    <div class="card">
+
+    <h2>Representação Binária das Páginas</h2>
+
+    <table>
+    <tr>
+        <th>Página</th>
+        <th>Binário</th>
+    </tr>
+    `;
+
+    tabelaPaginas.forEach(item => {
+
+        html += `
+        <tr>
+            <td>${item.pagina}</td>
+            <td>
+                ${item.pagina
+                    .toString(2)
+                    .padStart(bitsPagina,"0")}
+            </td>
+        </tr>
+        `;
+
+    });
+
+    html += `
+    </table>
+    </div>
+    `;
+
+    document.getElementById("binary").innerHTML = html;
+}
+
+function gerarVisualizacao(){
+
+    let paginasHtml = `
+    <div class="card">
+    <h2>Memória Lógica (Páginas)</h2>
+    <div class="memory">
+    `;
+
+    tabelaPaginas.forEach(item => {
+
+        paginasHtml += `
+        <div class="block page">
+            <div>P${item.pagina}</div>
+            <div>
+                ${item.pagina
+                    .toString(2)
+                    .padStart(bitsPagina,"0")}
+            </div>
+        </div>
+        `;
+
+    });
+
+    paginasHtml += `
+    </div>
+    </div>
+    `;
+
+    let quadrosHtml = `
+    <div class="card">
+    <h2>Memória Física (Quadros)</h2>
+    <div class="memory">
+    `;
+
+    const usados = [...new Set(
+        tabelaPaginas.map(p => p.quadro)
+    )];
+
+    usados.forEach(q => {
+
+        quadrosHtml += `
+        <div class="block frame">
+            <div>Q${q}</div>
+        </div>
+        `;
+
+    });
+
+    quadrosHtml += `
+    </div>
+    </div>
+    `;
+
+    document.getElementById("visual").innerHTML =
+        paginasHtml + quadrosHtml;
+}
+
+function traduzir(){
+
+    const endereco =
+        Number(
+            document.getElementById("logicalAddress").value
+        );
+
+    const pagina =
+        Math.floor(endereco / tamanhoPagina);
+
+    const offset =
+        endereco % tamanhoPagina;
+
+    const entrada =
+        tabelaPaginas.find(
+            p => p.pagina === pagina
+        );
+
+    if(!entrada){
+
+        document.getElementById("translation").innerHTML =
+            "<p>Endereço inválido.</p>";
+
+        return;
+    }
+
+    const enderecoFisico =
+        entrada.quadro * tamanhoPagina + offset;
+
+    document.getElementById("translation").innerHTML = `
+        <div id="resultado" class="result">
+            <p><strong>Endereço Lógico:</strong> 25</p>
+
+            <p><strong>Página:</strong> 1 (01)</p>
+
+            <p><strong>Offset:</strong> 9 (1001)</p>
+
+            <p><strong>Quadro:</strong> 3 (0011)</p>
+
+            <hr>
+
+            <p><strong>Endereço Físico Binário</strong></p>
+
+            <div class="endereco">
+                0011 | 1001
+            </div>
+
+            <small>
+                Quadro | Offset
+            </small>
+
+            <p>
+                <strong>Endereço Físico Decimal:</strong> 57
+            </p>
+        </div>
+    `;
+}
+
+gerar();
+
+</script>
+
+</body>
+</html>
