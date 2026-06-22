@@ -181,14 +181,12 @@ function gerar(){
 
     tabelaPaginas = [];
 
-    // cria lista de quadros disponíveis
     const quadrosLivres = [];
 
     for (let i = 0; i < quadros; i++) {
         quadrosLivres.push(i);
     }
 
-    // embaralha os quadros
     for (let i = quadrosLivres.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
 
@@ -196,7 +194,6 @@ function gerar(){
         [quadrosLivres[j], quadrosLivres[i]];
     }
 
-    // aloca páginas
     for (let i = 0; i < paginas; i++) {
 
         tabelaPaginas.push({
