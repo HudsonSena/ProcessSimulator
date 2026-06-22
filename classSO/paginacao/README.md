@@ -9,9 +9,9 @@
 
 
 ## Iniciar o simulador
-- Apensar arbri o código no VSCode;
+- Apenas abrir o código no VSCode;
 - O prório VSCode ja roda facilmente o código para web;
-- Click no botão esquedo do mouse em cima do arquivo "paginacao.html" e click em "Open in Integrated Browser";
+- Clicar no botão edireito do mouse em cima do arquivo "paginacao.html" e clicar em "Open in Integrated Browser";
 - Se preferir, pode baixar algum plugin para abrir em outro browser's como o "live server".
 
 ## Obervações
